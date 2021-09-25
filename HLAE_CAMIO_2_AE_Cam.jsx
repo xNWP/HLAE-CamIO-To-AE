@@ -1,5 +1,6 @@
 /*
-    file: HLAE_CAMIO_2_AE Cam_v1.jsx
+    file: HLAE_CAMIO_2_AE Cam.jsx
+    version: 2
     author: Brett Anthony
 
     This script converts CamIO Data exported from Half-Life Advanced FX to an after effects camera.
@@ -16,7 +17,7 @@ function ImportCamFunc()
 {
     // lot's of this code is based off msthavoc's code for the bvh importer.
     // ae js has poor to little documentation -_-
-
+    const HLAECAM_VERSION = 2;
 
     // Check that we're selecting a comp
     var myComp = app.project.activeItem;
@@ -31,11 +32,13 @@ function ImportCamFunc()
 
     if (CamIOFile)
     {
-        CamIOFile.open("r", "CAMIO", "????");
-
         var lineIn = CamIOFile.readln();
-
         var Header = lineIn;
+
+        // default values
+        var ScaleFov = true;
+        var FileVersion = -1;
+        var RelatedRatio = -1.0;
 
         // HEADERS
 
@@ -47,35 +50,48 @@ function ImportCamFunc()
         }
 
         lineIn = CamIOFile.readln();
-        var version = lineIn.replace("version", "").replace(" ", "");
-        // catch bad version
-        version = parseInt(version);
-        if (version > 1)
+        while (lineIn != "DATA")
         {
-            alert("HLAE CamIO version not supported by this script, check releases for a new version that does.");
+            lineSplit = lineIn.split(' ');
+            lineIn = CamIOFile.readln();
+            if (lineSplit.length == 0)
+                continue;
+
+            // version
+            if (lineSplit[0] == "version")
+            {
+                FileVersion = parseInt(lineSplit[1]);
+                if (FileVersion > HLAECAM_VERSION)
+                {
+                    alert("HLAE CamIO version not supported by this script, check releases for a new version that does.");
+                    return;
+                }
+                continue;
+            }
+
+            // scale
+            if (lineSplit[0] == "scaleFov")
+            {
+                if (lineSplit[1] == "none")
+                {
+                    ScaleFov = false;
+                    RelatedRatio = (myComp.width/myComp.height)/(4.0/3.0);
+                }
+                continue;
+            }
+        }
+
+        // catch no version
+        if (FileVersion < 0)
+        {
+            alert("Invalid CamIO file.");
             return;
         }
-
-        lineIn = CamIOFile.readln();
-        var ScaleFov = lineIn.replace("scaleFov", "").replace(" ", "");
-        if (ScaleFov == "none")
-        {
-            ScaleFov = false;
-            var RelatedRatio = (myComp.width/myComp.height)/(4.0/3.0);
-        }
-        else if (ScaleFov == "alienSwarm")
-        {
-            ScaleFov = true;
-        }
-
-        // skip non important data
-        lineIn = CamIOFile.readln();
-        lineIn = CamIOFile.readln();
 
         // Load in our data
         var camera = new Array();
 
-        for (var i = 0; !CamIOFile.eof; i ++)
+        for (var i = 0; !CamIOFile.eof; i++)
         {
             lineIn = CamIOFile.readln();
             camera[i] = lineIn.split(" ");
@@ -112,7 +128,7 @@ function ImportCamFunc()
         var x, y, z, xr, yr, zr, fov;
         var fps = (1 / myComp.frameDuration);
 
-        for (var i = 0; i < (camera.length - 1) && (i/fps) < (myComp.duration); i ++)
+        for (var i = 0; i < (camera.length) && (i/fps) < (myComp.duration); i ++)
         {
             x = camera[i][1];
             y = camera[i][2];
@@ -142,46 +158,19 @@ function ImportCamFunc()
             CamFov.push(fov);
         }
 
-        cam_pos = Y.property("Position");
-        cam_xrot = XZ.property("X Rotation");
-        cam_yrot = Y.property("Y Rotation");
-        cam_zrot = XZ.property("Z Rotation");
-        cam_fov = myCamera.property("Zoom");
+        Y.transform.position.setValuesAtTimes(KeyTimes, CamPos);
+        XZ.transform.xRotation.setValuesAtTimes(KeyTimes, CamRotX);
+        Y.transform.yRotation.setValuesAtTimes(KeyTimes, CamRotY);
+        XZ.transform.zRotation.setValuesAtTimes(KeyTimes, CamRotZ);
+        myCamera.cameraOption.zoom.setValuesAtTimes(KeyTimes, CamFov);
 
-        // Progress Bar
-        var PBWindow = new Window("palette");
-        PBWindow.PBText = PBWindow.add("statictext", undefined, "Processing 0 of " + KeyTimes.length + " frames. (this may freeze ae)");
-        PBWindow.PBText.preferredSize.width = 300;
-        PBWindow.PBar = PBWindow.add("progressbar", undefined, 0, KeyTimes.length);
-        PBWindow.PBar.preferredSize.width = 300;
+        alert("Successfully imported camera with " + KeyTimes.length + " frames.");
 
-        PBWindow.show();
-        PBWindow.update();
-
-        function UpdatePB(frame)
-        {
-            PBWindow.PBar.value = frame + 1;
-            PBWindow.PBText.text = "Processing " + (frame + 1) + " of " + KeyTimes.length + " frames. (this may freeze ae)";
-
-            PBWindow.update();
-        }
-
-        for (var i = 0; i < KeyTimes.length; i ++)
-        {
-            UpdatePB(i);
-
-            cam_pos.setValueAtTime(KeyTimes[i], CamPos[i]);
-            cam_xrot.setValueAtTime(KeyTimes[i], CamRotX[i]);
-            cam_yrot.setValueAtTime(KeyTimes[i], CamRotY[i]);
-            cam_zrot.setValueAtTime(KeyTimes[i], CamRotZ[i]);
-            cam_fov.setValueAtTime(KeyTimes[i], CamFov[i]);
-
-        }
-
-        alert("Successfully imported camera with " + i + " frames.");
-
-        PBWindow.close();
         UI.close();
+    }
+    else
+    {
+        alert("Could not open CamIO file.");
     }
 
 }
@@ -198,18 +187,21 @@ function RadToDeg(radians)
 
 
 function CreateUI(thisObj) {
+    const SCRIPT_VERSION = "2.0";
+
     // Init UI
-    var UI = (thisObj instanceof Panel) ? thisObj : new Window("palette", "HLAE CamIO2AE 1.0", [0, 0, 300, 180]);
+    var UI = (thisObj instanceof Panel) ? thisObj : new Window("palette", "HLAE CamIO2AE " + SCRIPT_VERSION, [0, 0, 300, 180]);
 
     // Add Fields
-    UI.add("statictext", [78, 15, 300, 40], "HLAE CamIO to AE Camera\r           version 1.0", { multiline: true });
+    UI.add("statictext", [78, 15, 300, 40], "HLAE CamIO to AE Camera");
+    UI.add("statictext", [112, 28, 300, 50], "version " + SCRIPT_VERSION);
     UI.add("statictext", [22, 35, 300, 100], "Select the comp to put the camera in, then import.");
     var importCam = UI.add("button", [70, 85, 230, 120], "Import HLAE CamIO");
     importCam.onClick = ImportCamFunc;
 
 
     UI.add("statictext", [105, 140, 230, 160], "script by xNWP");
-    UI.add("statictext", [82, 155, 230, 173], "http://github.com/xNWP");
+    UI.add("statictext", [82, 155, 230, 173], "https://github.com/xNWP");
 
     // Don't really have a firm grasp on how AEES formats element location,
     // have an idea but not for sure, values were just thrown in until it looked good :-)
