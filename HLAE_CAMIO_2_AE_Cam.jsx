@@ -13,10 +13,59 @@
 
 */
 
+function RadToDeg(angle) {
+    return angle * 180 / Math.PI;
+}
+
+function DegToRad(angle) {
+    return angle * Math.PI / 180;
+}
+
+function Mmul(M, oM) {
+    var out = [[1,0,0],[0,1,0],[0,0,1]];
+    for (var i = 0; i < 3; i++) {
+        for (var j = 0; j < 3; j++) {
+            out[i][j] = 0;
+            for (var k = 0; k < 3; k++) {
+                out[i][j] += M[i][k] * oM[k][j];
+            }
+        }
+    }
+    return out;    
+}
+
+function RotMatX(angle) {
+    var cx = Math.cos(angle);
+    var sx = Math.sin(angle);
+    var out = [
+        [1,  0,   0],
+        [0, cx, -sx],
+        [0, sx,  cx]];
+    return out;
+}
+
+function RotMatY(angle) {
+    var cx = Math.cos(angle);
+    var sx = Math.sin(angle);
+    var out = [
+        [ cx, 0, sx],
+        [  0, 1,  0],
+        [-sx, 0, cx]];
+    return out;
+}
+
+function RotMatZ(angle) {
+    var cx = Math.cos(angle);
+    var sx = Math.sin(angle);
+    var out = [
+        [cx, -sx, 0],
+        [sx,  cx, 0],
+        [ 0,   0, 1]];
+    return out;
+}
+
 function ImportCamFunc()
 {
-    // lot's of this code is based off msthavoc's code for the bvh importer.
-    // ae js has poor to little documentation -_-
     const HLAECAM_VERSION = 2;
 
     // Check that we're selecting a comp
@@ -38,7 +87,7 @@ function ImportCamFunc()
         // default values
         var ScaleFov = true;
         var FileVersion = -1;
-        var RelatedRatio = -1.0;
+        var RelatedRatio = 0.0;
 
         // HEADERS
 
@@ -104,39 +153,38 @@ function ImportCamFunc()
         myCamera = myComp.layers.addCamera("HLAE CamIO Camera", [0, 0]);
         myCamera.autoOrient = AutoOrientType.NO_AUTO_ORIENT;
         myCamera.property("Position").setValue([0, 0, 0]);
-
-        XZ = myComp.layers.addNull();
-        XZ.threeDLayer = true;
-        XZ.property("Position").setValue([0, 0, 0]);
-        XZ.name = "HLAE CamIO XZ";
-
-        Y = myComp.layers.addNull();
-        Y.threeDLayer = true;
-        Y.property("Position").setValue([0, 0, 0]);
-        Y.name = "HLAE CamIO Y";
-
-        myCamera.parent = XZ;
-        XZ.parent = Y;
-
+        
         var CamPos = new Array();
-        var CamRotX = new Array();
-        var CamRotY = new Array();
-        var CamRotZ = new Array();
+        var CamRot = new Array();
         var CamFov = new Array();
         var KeyTimes = new Array();
+        const fps = (1 / myComp.frameDuration);
 
-        var x, y, z, xr, yr, zr, fov;
-        var fps = (1 / myComp.frameDuration);
-
-        for (var i = 0; i < (camera.length) && (i/fps) < (myComp.duration); i ++)
+        for (var i = 0; i < (camera.length) && (i/fps) < (myComp.duration); i++)
         {
-            x = camera[i][1];
-            y = camera[i][2];
-            z = camera[i][3];
-            xr = camera[i][4];
-            yr = camera[i][5];
-            zr = camera[i][6];
-            fov = camera[i][7];
+            var x = camera[i][1];
+            var y = camera[i][2];
+            var z = camera[i][3];
+            var xr = DegToRad(camera[i][4]); // roll
+            var yr = DegToRad(camera[i][5]); // pitch
+            var zr = DegToRad(camera[i][6]); // heading
+            
+            // Create a rotation matrix in HPB (csgo) order,
+            var RotMat = RotMatX(xr);
+            RotMat = Mmul(RotMatY(yr), RotMat);
+            RotMat = Mmul(RotMatZ(zr), RotMat);
+
+            // Decompose it in PHB (ae) order.
+            yr = Math.atan2(-RotMat[2][0], RotMat[0][0]);
+            yr = RadToDeg(yr);
+            xr = Math.atan2(-RotMat[1][2], RotMat[1][1]);
+            xr = RadToDeg(xr);
+            var r31 = RotMat[2][0];
+            var r11 = RotMat[0][0];
+            zr = Math.atan2(RotMat[1][0], Math.sqrt(r31*r31 + r11*r11));
+            zr = RadToDeg(zr);
+
+            var fov = camera[i][7];
 
             if (!ScaleFov)
             {  
@@ -152,16 +200,12 @@ function ImportCamFunc()
 
             KeyTimes.push(i / fps);
             CamPos.push([-y, -z, x]);
-            CamRotX.push(-yr);
-            CamRotY.push(-zr);
-            CamRotZ.push(xr);
+            CamRot.push([-yr, -zr, xr]);
             CamFov.push(fov);
         }
 
-        Y.transform.position.setValuesAtTimes(KeyTimes, CamPos);
-        XZ.transform.xRotation.setValuesAtTimes(KeyTimes, CamRotX);
-        Y.transform.yRotation.setValuesAtTimes(KeyTimes, CamRotY);
-        XZ.transform.zRotation.setValuesAtTimes(KeyTimes, CamRotZ);
+        myCamera.transform.position.setValuesAtTimes(KeyTimes, CamPos);
+        myCamera.transform.orientation.setValuesAtTimes(KeyTimes, CamRot);
         myCamera.cameraOption.zoom.setValuesAtTimes(KeyTimes, CamFov);
 
         alert("Successfully imported camera with " + KeyTimes.length + " frames.");
@@ -198,7 +242,6 @@ function CreateUI(thisObj) {
     UI.add("statictext", [22, 35, 300, 100], "Select the comp to put the camera in, then import.");
     var importCam = UI.add("button", [70, 85, 230, 120], "Import HLAE CamIO");
     importCam.onClick = ImportCamFunc;
-
 
     UI.add("statictext", [105, 140, 230, 160], "script by xNWP");
     UI.add("statictext", [82, 155, 230, 173], "https://github.com/xNWP");
