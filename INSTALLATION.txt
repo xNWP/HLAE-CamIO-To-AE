@@ -1,18 +1,9 @@
-To install copy the included HLAE_CAMIO_2_AE_Cam_v1.jsx
+To install copy the included HLAE-CamIO_To_AE_Cam_<version>.jsx
 	file to the After Effects Script Directory typically located at:
 	C:\Program Files\Adobe\<Your Adobe Version>\Support Files\Scripts
 	
-To use, launch the script through File > Scripts > HLAE_CAMIO_2_AE_Cam_v1.jsx
+To use, launch the script through File > Scripts > HLAE_CamIO_To_AE_Cam.jsx
 	and follow the onscreen instructions.
 	
 GL and HF !
 - Brett "xNWP" Anthony
-
-
-
-
-
-
-Like the script?
-Send me some stuff to play/use/sell for coffee money :-)
-https://steamcommunity.com/tradeoffer/new/?partner=37630060&token=pGfgBYGY
