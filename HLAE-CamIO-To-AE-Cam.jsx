@@ -219,17 +219,6 @@ function ImportCamFunc()
 
 }
 
-function DegToRad(degrees)
-{
-    return degrees * (Math.PI / 180);
-}
-
-function RadToDeg(radians)
-{
-    return radians * (180 / Math.PI);
-}
-
-
 function CreateUI(thisObj) {
     const SCRIPT_VERSION = "2.0";
 
