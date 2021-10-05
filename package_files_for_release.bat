@@ -11,11 +11,12 @@ SET /P versionMinor="Version Minor: "
 SET filelist=%title%_%versionMajor%_%versionMinor%.jsx INSTALLATION.txt
 SET archName="%title%_%versionMajor%_%versionMinor%"
 
-DEL %title%_*
 COPY %title%.jsx %title%_%versionMajor%_%versionMinor%.jsx
 
 %sevzip% a -t7z %archName%.7z %filelist%
 %sevzip% a -tzip %archName%.zip %filelist%
+
+DEL %title%_%versionMajor%_%versionMinor%.jsx
 
 ECHO.
 ECHO Packaged.
