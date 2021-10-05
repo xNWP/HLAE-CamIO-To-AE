@@ -13,66 +13,20 @@
 
 */
 
-function RadToDeg(angle) {
-    return angle * 180 / Math.PI;
-}
+var HLAECamIO2AE_VersionMajor = 2;
+var HLAECamIO2AE_VersionMinor = 0;
+var HLAECamIO2AE_Version =
+(HLAECamIO2AE_VersionMajor + '.' + HLAECamIO2AE_VersionMinor);
+var HLAECamIO2AE_MaxCamIOVersion = 2;
 
-function DegToRad(angle) {
-    return angle * Math.PI / 180;
-}
-
-function Mmul(M, oM) {
-    var out = [[1,0,0],[0,1,0],[0,0,1]];
-    for (var i = 0; i < 3; i++) {
-        for (var j = 0; j < 3; j++) {
-            out[i][j] = 0;
-            for (var k = 0; k < 3; k++) {
-                out[i][j] += M[i][k] * oM[k][j];
-            }
-        }
-    }
-    return out;    
-}
-
-function RotMatX(angle) {
-    var cx = Math.cos(angle);
-    var sx = Math.sin(angle);
-    var out = [
-        [1,  0,   0],
-        [0, cx, -sx],
-        [0, sx,  cx]];
-    return out;
-}
-
-function RotMatY(angle) {
-    var cx = Math.cos(angle);
-    var sx = Math.sin(angle);
-    var out = [
-        [ cx, 0, sx],
-        [  0, 1,  0],
-        [-sx, 0, cx]];
-    return out;
-}
-
-function RotMatZ(angle) {
-    var cx = Math.cos(angle);
-    var sx = Math.sin(angle);
-    var out = [
-        [cx, -sx, 0],
-        [sx,  cx, 0],
-        [ 0,   0, 1]];
-    return out;
-}
-
+/* Main Script */
 function ImportCamFunc()
 {
-    const HLAECAM_VERSION = 2;
-
     // Check that we're selecting a comp
     var myComp = app.project.activeItem;
     if (myComp == null)
     {
-        alert("Please select your comp to place the camera in.");
+        alert("Please select a comp to place the camera in.");
         return;
     }
 
@@ -88,8 +42,6 @@ function ImportCamFunc()
         var ScaleFov = true;
         var FileVersion = -1;
         var RelatedRatio = 0.0;
-
-        // HEADERS
 
         // catch non hlae camio file.
         if (Header != "advancedfx Cam")
@@ -110,10 +62,12 @@ function ImportCamFunc()
             if (lineSplit[0] == "version")
             {
                 FileVersion = parseInt(lineSplit[1]);
-                if (FileVersion > HLAECAM_VERSION)
+                if (FileVersion > HLAECamIO2AE_MaxCamIOVersion)
                 {
-                    alert("HLAE CamIO version not supported by this script, check releases for a new version that does.");
-                    return;
+                    if (!confirm("CamIO file is version " + FileVersion
+                    + ", this script is designed for version " + HLAECamIO2AE_MaxCamIOVersion
+                    + " and lower. Try importing the file anyway?"))
+                        return;
                 }
                 continue;
             }
@@ -147,6 +101,7 @@ function ImportCamFunc()
         }
         CamIOFile.close();
 
+        app.beginUndoGroup("HLAE CamIO Import");
         // Load in data
         myComp.time = 0;
 
@@ -168,13 +123,18 @@ function ImportCamFunc()
             var xr = DegToRad(camera[i][4]); // roll
             var yr = DegToRad(camera[i][5]); // pitch
             var zr = DegToRad(camera[i][6]); // heading
-            
-            // Create a rotation matrix in HPB (csgo) order,
+
+            // Create a rotation matrix in HPB intrinsic (csgo) order,
             var RotMat = RotMatX(xr);
             RotMat = Mmul(RotMatY(yr), RotMat);
             RotMat = Mmul(RotMatZ(zr), RotMat);
 
-            // Decompose it in PHB (ae) order.
+            /*
+            Decompose it in PHB intrinsic (ae) order.
+            We don't need to worry about taking the shortest route here,
+            we'll be placing the rotation values in the orientation field
+            which AE uses quaternions for internally.
+            */
             yr = Math.atan2(-RotMat[2][0], RotMat[0][0]);
             yr = RadToDeg(yr);
             xr = Math.atan2(-RotMat[1][2], RotMat[1][1]);
@@ -210,6 +170,7 @@ function ImportCamFunc()
 
         alert("Successfully imported camera with " + KeyTimes.length + " frames.");
 
+        app.endUndoGroup();
         UI.close();
     }
     else
@@ -220,14 +181,15 @@ function ImportCamFunc()
 }
 
 function CreateUI(thisObj) {
-    const SCRIPT_VERSION = "2.0";
-
     // Init UI
-    var UI = (thisObj instanceof Panel) ? thisObj : new Window("palette", "HLAE CamIO2AE " + SCRIPT_VERSION, [0, 0, 300, 180]);
+    var UI = (thisObj instanceof Panel) ? thisObj :
+    new Window("palette",
+    "HLAE CamIO2AE " + HLAECamIO2AE_Version,
+    [0, 0, 300, 180]);
 
     // Add Fields
     UI.add("statictext", [78, 15, 300, 40], "HLAE CamIO to AE Camera");
-    UI.add("statictext", [112, 28, 300, 50], "version " + SCRIPT_VERSION);
+    UI.add("statictext", [112, 28, 300, 50], "version " + HLAECamIO2AE_Version);
     UI.add("statictext", [22, 35, 300, 100], "Select the comp to put the camera in, then import.");
     var importCam = UI.add("button", [70, 85, 230, 120], "Import HLAE CamIO");
     importCam.onClick = ImportCamFunc;
@@ -241,7 +203,60 @@ function CreateUI(thisObj) {
     return UI;
 }
 
-// MAIN PROGRAM EXECUTION
+function RadToDeg(angle) {
+    return angle * 180 / Math.PI;
+}
+
+function DegToRad(angle) {
+    return angle * Math.PI / 180;
+}
+
+/* matrix multiplication, M premultiplies oM */
+function Mmul(M, oM) {
+    var out = [[1,0,0],[0,1,0],[0,0,1]];
+    for (var i = 0; i < 3; i++) {
+        for (var j = 0; j < 3; j++) {
+            out[i][j] = 0;
+            for (var k = 0; k < 3; k++) {
+                out[i][j] += M[i][k] * oM[k][j];
+            }
+        }
+    }
+    return out;    
+}
+
+/* generates rotation matrices for angle around basis vector */
+function RotMatX(angle) {
+    var cx = Math.cos(angle);
+    var sx = Math.sin(angle);
+    var out = [
+        [1,  0,   0],
+        [0, cx, -sx],
+        [0, sx,  cx]];
+    return out;
+}
+
+function RotMatY(angle) {
+    var cx = Math.cos(angle);
+    var sx = Math.sin(angle);
+    var out = [
+        [ cx, 0, sx],
+        [  0, 1,  0],
+        [-sx, 0, cx]];
+    return out;
+}
+
+function RotMatZ(angle) {
+    var cx = Math.cos(angle);
+    var sx = Math.sin(angle);
+    var out = [
+        [cx, -sx, 0],
+        [sx,  cx, 0],
+        [ 0,   0, 1]];
+    return out;
+}
+
+/* Enter Main */
 var UI = CreateUI(this);
 
 UI.center();
